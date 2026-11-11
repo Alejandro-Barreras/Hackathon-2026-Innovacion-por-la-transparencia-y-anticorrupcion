@@ -4,6 +4,12 @@ import streamlit as st
 
 import pagina_presupuesto
 
+import pagina_adjudicaciones
+import pagina_normativo
+import pagina_padron
+import pagina_presupuesto
+import pagina_sueldos
+
 st.set_page_config(
     page_title="Portal de Transparencia - Hermosillo",
     layout="wide",
@@ -114,10 +120,18 @@ def pagina_pendiente(nombre: str) -> None:
     )
 
 
+PAGINAS_ACTIVAS = {
+    "presupuesto": pagina_presupuesto.mostrar,
+    "sueldos": pagina_sueldos.mostrar,
+    "adjudicaciones": pagina_adjudicaciones.mostrar,
+    "padron_beneficiarios": pagina_padron.mostrar,
+    "normativo": pagina_normativo.mostrar,
+}
+
 if pagina == "inicio":
     pagina_inicio()
-elif pagina == "presupuesto":
-    pagina_presupuesto.mostrar()
+elif pagina in PAGINAS_ACTIVAS:
+    PAGINAS_ACTIVAS[pagina]()
 else:
     pagina_pendiente(NOMBRES[pagina])
 

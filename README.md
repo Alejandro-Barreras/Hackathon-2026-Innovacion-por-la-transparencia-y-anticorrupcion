@@ -7,7 +7,9 @@ Este repositorio contiene la solución desarrollada para el **Hackathon: Innovac
 ## Instalación
 ```bash
 py -m venv .venv
-pip install streamlit plotly beautifulsoup4
+.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
 ```
 ---
 ## Correr

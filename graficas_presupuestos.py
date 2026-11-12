@@ -2,7 +2,7 @@
 
 Uso en app.py:
 
-    import graficas as g
+    import graficas_presupuestos as g
 
     df = g.cargar_datos("datos/excel-completo-entidad-1-2026-TRIMESTRE I.csv")
     g.mostrar(g.grafica_barras(df, dimension="CLADM_DEPENDENCIA_DESC", monto="devengado_"))

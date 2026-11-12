@@ -21,39 +21,114 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-PAGINAS = [
+def _p(id_: str, nombre: str, descripcion: str, icono: str) -> dict:
+    return {"id": id_, "nombre": nombre, "descripcion": descripcion, "icono": icono}
+
+
+GRUPOS = [
     {
-        "id": "presupuesto",
-        "nombre": "Presupuesto",
-        "descripcion": "Cuánto dinero aprobó el Ayuntamiento, cuánto ha gastado y en qué áreas.",
-        "icono": "mdi-cash-multiple",
+        "id": "dinero",
+        "titulo": "¿En qué se gasta el dinero público?",
+        "icono": ":material/payments:",
+        "paginas": [
+            _p("presupuesto", "Transparencia Presupuestaria Hermosillo",
+               "Cuánto dinero aprobó el Ayuntamiento, cuánto ha gastado y en qué áreas.", "mdi-cash-multiple"),
+            _p("sueldos", "Sueldos",
+               "Remuneraciones del personal del Ayuntamiento por área, puesto y sexo.", "mdi-account-cash"),
+            _p("multas_transito", "Ingresos por Multas de Tránsito",
+               "Lo que recauda el municipio por infracciones de tránsito.", "mdi-car-emergency"),
+            _p("parquimetros", "Ingresos por Parquímetros",
+               "Lo que recauda el municipio por el uso de parquímetros.", "mdi-parking"),
+            _p("financiamiento_agua", "Financiamiento Temporal Agua de Hermosillo",
+               "Deuda y financiamiento temporal del organismo Agua de Hermosillo.", "mdi-bank"),
+        ],
     },
     {
-        "id": "sueldos",
-        "nombre": "Sueldos",
-        "descripcion": "Remuneraciones del personal del Ayuntamiento por área, puesto y sexo.",
-        "icono": "mdi-account-cash",
+        "id": "compras",
+        "titulo": "Compras, contratos y obras",
+        "icono": ":material/handshake:",
+        "paginas": [
+            _p("licitaciones", "Licitaciones y Convocatorias",
+               "Concursos abiertos y convocatorias para contratar con el Ayuntamiento.", "mdi-bullhorn"),
+            _p("adjudicaciones", "Adjudicaciones",
+               "Contratos, licitaciones y adjudicaciones directas del Ayuntamiento.", "mdi-file-sign"),
+            _p("tu_obra", "Portal Tu Obra",
+               "Obras públicas del municipio: dónde, cuánto cuestan y cómo avanzan.", "mdi-hard-hat"),
+        ],
     },
     {
-        "id": "adjudicaciones",
-        "nombre": "Adjudicaciones",
-        "descripcion": "Contratos, licitaciones y adjudicaciones directas del Ayuntamiento.",
-        "icono": "mdi-file-sign",
+        "id": "gobierno",
+        "titulo": "Gobierno y decisiones",
+        "icono": ":material/account_balance:",
+        "paginas": [
+            _p("cabildo", "Cabildo",
+               "Sesiones y acuerdos del Cabildo de Hermosillo.", "mdi-account-tie-voice"),
+            _p("actas_ayuntamiento", "Actas Ayuntamiento",
+               "Actas oficiales de las sesiones del Ayuntamiento.", "mdi-file-document-multiple"),
+            _p("normativo", "Marco Normativo",
+               "Leyes, reglamentos y lineamientos que rigen al Ayuntamiento.", "mdi-scale-balance"),
+            _p("directorio", "Directorio",
+               "Funcionarios del Ayuntamiento y cómo contactarlos.", "mdi-card-account-phone"),
+            _p("transparencia_historico", "Transparencia Histórico",
+               "Información de transparencia de años anteriores.", "mdi-history"),
+        ],
     },
     {
-        "id": "padron_beneficiarios",
-        "nombre": "Padrón de beneficiarios",
-        "descripcion": "Personas y grupos que reciben apoyos de los programas sociales municipales.",
-        "icono": "mdi-account-group",
+        "id": "ciudad",
+        "titulo": "Servicios y vida en la ciudad",
+        "icono": ":material/location_city:",
+        "paginas": [
+            _p("bachometro", "Bachometro",
+               "Reportes y reparación de baches en las calles.", "mdi-road-variant"),
+            _p("red_ciclista", "Red Ciclista",
+               "Ciclovías y rutas para moverse en bicicleta.", "mdi-bike"),
+            _p("recoleccion_basura", "Recolección de Basura",
+               "Rutas y horarios del servicio de recolección.", "mdi-delete-empty"),
+            _p("wifi", "Puntos de WIFI-Hermosillo Crece Conectado",
+               "Ubicación de los puntos de internet gratuito.", "mdi-wifi"),
+        ],
     },
     {
-        "id": "normativo",
-        "nombre": "Normativo",
-        "descripcion": "Leyes, reglamentos y lineamientos que rigen al Ayuntamiento.",
-        "icono": "mdi-scale-balance",
+        "id": "ambiente",
+        "titulo": "Agua y medio ambiente",
+        "icono": ":material/eco:",
+        "paginas": [
+            _p("calidad_agua", "Calidad del Agua",
+               "Resultados de los análisis de calidad del agua potable.", "mdi-water-check"),
+            _p("monitoreo_aire", "Sistema de Monitoreo de la Calidad del Aire",
+               "Mediciones de la calidad del aire en la ciudad.", "mdi-weather-windy"),
+            _p("remah", "REMAH: Programa de Gestión para Mejorar la Calidad del Aire",
+               "Acciones del municipio para mejorar el aire que respiramos.", "mdi-leaf"),
+        ],
+    },
+    {
+        "id": "bienestar",
+        "titulo": "Apoyos y bienestar",
+        "icono": ":material/volunteer_activism:",
+        "paginas": [
+            _p("padron_beneficiarios", "Padrón de Beneficiarios",
+               "Personas y grupos que reciben apoyos de los programas sociales municipales.", "mdi-account-group"),
+            _p("espacios_deportivos", "Espacios y Actividades Deportivas H",
+               "Unidades deportivas y actividades para la comunidad.", "mdi-soccer"),
+            _p("bienestar_animal", "Instituto Municipal de Protección y Bienestar Animal",
+               "Adopciones, esterilizaciones y protección de animales.", "mdi-paw"),
+        ],
+    },
+    {
+        "id": "seguridad",
+        "titulo": "Seguridad y participación ciudadana",
+        "icono": ":material/shield:",
+        "paginas": [
+            _p("videovigilancia", "Sistema de Videovigilancia Inteligente",
+               "Cámaras de vigilancia para la seguridad de la ciudad.", "mdi-cctv"),
+            _p("denuncias", "Denuncias, Quejas y Reconocimientos",
+               "Presenta una denuncia, queja o reconocimiento a servidores públicos.", "mdi-message-alert"),
+            _p("h_digital", "H Digital",
+               "Trámites y servicios municipales en línea.", "mdi-cellphone-check"),
+        ],
     },
 ]
-NOMBRES = {p["id"]: p["nombre"] for p in PAGINAS}
+NOMBRES = {p["id"]: p["nombre"] for g in GRUPOS for p in g["paginas"]}
 
 # --- Navegación: página actual + historial para "Regresar" ---
 st.session_state.setdefault("pagina", "inicio")
@@ -104,10 +179,12 @@ def tarjeta(p: dict) -> None:
 
 def pagina_inicio() -> None:
     st.markdown('<h2 class="titulo-portal">Transparencia Proactiva</h2>', unsafe_allow_html=True)
-    for fila in range(0, len(PAGINAS), 3):
-        for columna, p in zip(st.columns(3, gap="large"), PAGINAS[fila : fila + 3]):
-            with columna:
-                tarjeta(p)
+    for g in GRUPOS:
+        with st.expander(g["titulo"], icon=g["icono"], key=f"grupo_{g['id']}"):
+            for fila in range(0, len(g["paginas"]), 3):
+                for columna, p in zip(st.columns(3, gap="large"), g["paginas"][fila : fila + 3]):
+                    with columna:
+                        tarjeta(p)
 
 
 def pagina_pendiente(nombre: str) -> None:

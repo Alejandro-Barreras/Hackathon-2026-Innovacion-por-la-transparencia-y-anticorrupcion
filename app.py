@@ -128,6 +128,7 @@ GRUPOS = [
         ],
     },
 ]
+GRUPOS_POR_ID = {g["id"]: g for g in GRUPOS}
 NOMBRES = {p["id"]: p["nombre"] for g in GRUPOS for p in g["paginas"]}
 
 # --- Navegación: página actual + historial para "Regresar" ---
@@ -179,12 +180,34 @@ def tarjeta(p: dict) -> None:
 
 def pagina_inicio() -> None:
     st.markdown('<h2 class="titulo-portal">Transparencia Proactiva</h2>', unsafe_allow_html=True)
-    for g in GRUPOS:
-        with st.expander(g["titulo"], icon=g["icono"], key=f"grupo_{g['id']}"):
-            for fila in range(0, len(g["paginas"]), 3):
-                for columna, p in zip(st.columns(3, gap="large"), g["paginas"][fila : fila + 3]):
-                    with columna:
-                        tarjeta(p)
+    # Mosaico: 3 grupos grandes + 4 chicos en el cuadrante inferior derecho.
+    arriba_izq, arriba_der = st.columns(2)
+    abajo_izq, abajo_der = st.columns(2)
+    with arriba_izq:
+        grupo("dinero", grande=True)
+    with arriba_der:
+        grupo("ciudad", grande=True)
+    with abajo_izq:
+        grupo("gobierno", grande=True)
+    with abajo_der:
+        for fila in (("compras", "ambiente"), ("bienestar", "seguridad")):
+            for columna, id_ in zip(st.columns(2), fila):
+                with columna:
+                    grupo(id_, grande=False)
+
+
+def grupo(id_: str, grande: bool) -> None:
+    g = GRUPOS_POR_ID[id_]
+    tam = "grande" if grande else "chico"
+    with st.expander(g["titulo"], icon=g["icono"], key=f"grupo_{tam}_{id_}"):
+        if not grande:  # cuadro angosto: tarjetas apiladas
+            for p in g["paginas"]:
+                tarjeta(p)
+            return
+        for fila in range(0, len(g["paginas"]), 2):
+            for columna, p in zip(st.columns(2), g["paginas"][fila : fila + 2]):
+                with columna:
+                    tarjeta(p)
 
 
 def pagina_pendiente(nombre: str) -> None:

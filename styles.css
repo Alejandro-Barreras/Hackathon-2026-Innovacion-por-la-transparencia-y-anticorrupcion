@@ -151,9 +151,17 @@ header[data-testid="stHeader"], #MainMenu, footer { display: none; }
 }
 
 /* Category groups (expanders) */
-[class*="st-key-grupo_"] { margin-bottom: 1rem; }
-[class*="st-key-grupo_"] details { border: 1px solid var(--verde); border-radius: 1rem; }
-[class*="st-key-grupo_"] summary p { font-size: 1.25rem; font-weight: 600; color: var(--tinta); }
+[class*="st-key-grupo_"] details { border: 1px solid var(--verde); border-radius: 1rem; overflow: hidden; }
+[class*="st-key-grupo_"] summary {
+  align-items: flex-start;
+  background: linear-gradient(135deg, rgba(42,174,158,.35), rgba(238,121,0,.25));
+}
+/* Alturas del mosaico: 2 chicos + separación (1rem) = 1 grande */
+[class*="st-key-grupo_grande_"] summary { min-height: 14rem; padding: 1.25rem; }
+[class*="st-key-grupo_chico_"] summary { min-height: 6.5rem; padding: 0.75rem; }
+[class*="st-key-grupo_"] summary p { font-weight: 600; color: var(--tinta); }
+[class*="st-key-grupo_grande_"] summary p { font-size: 1.5rem; }
+[class*="st-key-grupo_chico_"] summary p { font-size: 1rem; line-height: 1.3; }
 [class*="st-key-grupo_"] summary [data-testid="stIconMaterial"] { color: var(--verde); }
 [class*="st-key-grupo_"] details[open] [data-testid="stExpanderDetails"] { animation: abrir-grupo .35s ease-out; }
 @keyframes abrir-grupo {

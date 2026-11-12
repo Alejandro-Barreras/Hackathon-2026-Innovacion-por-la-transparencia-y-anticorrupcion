@@ -134,6 +134,7 @@ NOMBRES = {p["id"]: p["nombre"] for g in GRUPOS for p in g["paginas"]}
 # --- Navegación: página actual + historial para "Regresar" ---
 st.session_state.setdefault("pagina", "inicio")
 st.session_state.setdefault("historial", [])
+st.session_state.setdefault("grupo", None)  # grupo abierto en el inicio (None = mosaico)
 
 
 def ir(pagina: str) -> None:
@@ -148,12 +149,27 @@ def regresar() -> None:
 def inicio() -> None:
     st.session_state.pagina = "inicio"
     st.session_state.historial = []
+    st.session_state.grupo = None
+
+
+def abrir_grupo(id_: str) -> None:
+    st.session_state.grupo = id_
+
+
+def cerrar_grupo() -> None:
+    st.session_state.grupo = None
 
 
 pagina = st.session_state.pagina
+grupo_abierto = st.session_state.grupo
 
 # --- Encabezado ---
-miga = "<li>Inicio</li>" if pagina == "inicio" else f"<li>Inicio</li><li>{NOMBRES[pagina]}</li>"
+if pagina != "inicio":
+    miga = f"<li>Inicio</li><li>{NOMBRES[pagina]}</li>"
+elif grupo_abierto:
+    miga = f"<li>Inicio</li><li>{GRUPOS_POR_ID[grupo_abierto]['titulo']}</li>"
+else:
+    miga = "<li>Inicio</li>"
 st.markdown(
     f"""
 <header class="encabezado-portal">
@@ -180,30 +196,42 @@ def tarjeta(p: dict) -> None:
 
 def pagina_inicio() -> None:
     st.markdown('<h2 class="titulo-portal">Transparencia Proactiva</h2>', unsafe_allow_html=True)
+    if grupo_abierto:
+        panel_grupo(GRUPOS_POR_ID[grupo_abierto])
+        return
     # Mosaico: 3 grupos grandes + 4 chicos en el cuadrante inferior derecho.
     arriba_izq, arriba_der = st.columns(2)
     abajo_izq, abajo_der = st.columns(2)
     with arriba_izq:
-        grupo("dinero", grande=True)
+        cuadro("dinero", grande=True)
     with arriba_der:
-        grupo("ciudad", grande=True)
+        cuadro("ciudad", grande=True)
     with abajo_izq:
-        grupo("gobierno", grande=True)
+        cuadro("gobierno", grande=True)
     with abajo_der:
         for fila in (("compras", "ambiente"), ("bienestar", "seguridad")):
             for columna, id_ in zip(st.columns(2), fila):
                 with columna:
-                    grupo(id_, grande=False)
+                    cuadro(id_, grande=False)
 
 
-def grupo(id_: str, grande: bool) -> None:
+# Esquina del mosaico donde está cada grupo: el zoom crece desde ahí.
+POSICION = {"dinero": "ai", "ciudad": "ad", "gobierno": "bi"}  # el resto: "bd"
+
+
+def cuadro(id_: str, grande: bool) -> None:
     g = GRUPOS_POR_ID[id_]
     tam = "grande" if grande else "chico"
-    with st.expander(g["titulo"], icon=g["icono"], key=f"grupo_{tam}_{id_}"):
-        if not grande:  # cuadro angosto: tarjetas apiladas
-            for p in g["paginas"]:
-                tarjeta(p)
-            return
+    st.button(g["titulo"], icon=g["icono"], key=f"grupo_{tam}_{id_}",
+              on_click=abrir_grupo, args=(id_,), width="stretch")
+
+
+def panel_grupo(g: dict) -> None:
+    with st.container(key=f"panel_{POSICION.get(g['id'], 'bd')}"):
+        with st.container(horizontal=True, vertical_alignment="center"):
+            st.button("← Todas las categorías", key="btn_cerrar_grupo", on_click=cerrar_grupo)
+            st.markdown(f'<h3 class="panel-titulo">{g["titulo"]}</h3>', unsafe_allow_html=True)
+        # Tarjetas compactas en 2 columnas: el grupo cabe en el espacio del mosaico.
         for fila in range(0, len(g["paginas"]), 2):
             for columna, p in zip(st.columns(2), g["paginas"][fila : fila + 2]):
                 with columna:

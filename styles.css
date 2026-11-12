@@ -150,24 +150,59 @@ header[data-testid="stHeader"], #MainMenu, footer { display: none; }
   background: #22887B; border-color: #22887B; color: #fff;
 }
 
-/* Category groups (expanders) */
-[class*="st-key-grupo_"] details { border: 1px solid var(--verde); border-radius: 1rem; overflow: hidden; }
-[class*="st-key-grupo_"] summary {
-  align-items: flex-start;
+/* Category mosaic tiles (buttons) */
+[class*="st-key-grupo_"] button {
+  align-items: flex-start; justify-content: flex-start; text-align: left;
   background: linear-gradient(135deg, rgba(42,174,158,.35), rgba(238,121,0,.25));
+  border: 1px solid var(--verde); border-radius: 1rem; color: var(--tinta);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+[class*="st-key-grupo_"] button:hover, [class*="st-key-grupo_"] button:focus {
+  transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,.12);
+  border-color: var(--verde); color: var(--tinta);
 }
 /* Alturas del mosaico: 2 chicos + separación (1rem) = 1 grande */
-[class*="st-key-grupo_grande_"] summary { min-height: 14rem; padding: 1.25rem; }
-[class*="st-key-grupo_chico_"] summary { min-height: 6.5rem; padding: 0.75rem; }
-[class*="st-key-grupo_"] summary p { font-weight: 600; color: var(--tinta); }
-[class*="st-key-grupo_grande_"] summary p { font-size: 1.5rem; }
-[class*="st-key-grupo_chico_"] summary p { font-size: 1rem; line-height: 1.3; }
-[class*="st-key-grupo_"] summary [data-testid="stIconMaterial"] { color: var(--verde); }
-[class*="st-key-grupo_"] details[open] [data-testid="stExpanderDetails"] { animation: abrir-grupo .35s ease-out; }
-@keyframes abrir-grupo {
-  from { opacity: 0; transform: translateY(-0.75rem); }
+[class*="st-key-grupo_grande_"] button { height: 14rem; padding: 1.25rem; }
+[class*="st-key-grupo_chico_"] button { height: 6.5rem; padding: 0.75rem; }
+[class*="st-key-grupo_"] button > div, [class*="st-key-grupo_"] button > div > span {
+  justify-content: flex-start; align-items: flex-start; gap: 0.5rem;
+}
+[class*="st-key-grupo_"] button [data-testid="stMarkdownContainer"],
+[class*="st-key-grupo_"] button p { white-space: normal; overflow: visible; text-overflow: clip; }
+[class*="st-key-grupo_"] button p { font-weight: 600; text-align: left; }
+[class*="st-key-grupo_grande_"] button p { font-size: 1.5rem; }
+[class*="st-key-grupo_chico_"] button p { font-size: 1rem; line-height: 1.3; }
+[class*="st-key-grupo_"] button [data-testid="stIconMaterial"] { color: var(--verde); }
+[class*="st-key-grupo_grande_"] button [data-testid="stIconMaterial"] { font-size: 1.75rem; }
+
+/* Open group: zooms out of its tile, in the space the mosaic used */
+[class*="st-key-panel_"] {
+  min-height: 29rem; padding: 1.25rem;
+  border: 1px solid var(--verde); border-radius: 1rem;
+  animation: zoom-grupo .35s ease-out;
+}
+.st-key-panel_ai { transform-origin: top left; }
+.st-key-panel_ad { transform-origin: top right; }
+.st-key-panel_bi { transform-origin: bottom left; }
+.st-key-panel_bd { transform-origin: bottom right; }
+@keyframes zoom-grupo {
+  from { opacity: 0; transform: scale(.4); }
   to { opacity: 1; transform: none; }
 }
+.stApp h3.panel-titulo { font-size: 1.5rem; font-weight: 700; margin: 0; padding: 0; color: var(--tinta); }
+/* Compact horizontal cards inside the panel so the group fits in the mosaic's space */
+[class*="st-key-panel_"] [class*="st-key-tarjeta_"] { position: relative; padding: 0.75rem 0 !important; margin-bottom: 0; }
+[class*="st-key-panel_"] [class*="st-key-tarjeta_"] > div { padding: 0 1rem 0 5.25rem; }
+[class*="st-key-panel_"] .tarjeta-banda { position: static; height: 0; margin: 0; background: none; }
+[class*="st-key-panel_"] .tarjeta-icono {
+  top: 0.75rem; left: 1rem; width: 3.5rem; height: 3.5rem; font-size: 1.75rem;
+  background: linear-gradient(135deg, rgba(42,174,158,.2), rgba(238,121,0,.15));
+}
+.stApp [class*="st-key-panel_"] h3.tarjeta-titulo { font-size: 1.0625rem; margin: 0 0 0.25rem; }
+.stApp [class*="st-key-panel_"] p.tarjeta-descripcion { font-size: 0.9375rem; -webkit-line-clamp: 1; margin: 0; }
+[class*="st-key-panel_"] [class*="st-key-tarjeta_"] button { padding: 0.125rem 1rem; min-height: 0; font-size: 0.9375rem; }
+.st-key-btn_cerrar_grupo button { background: #fff; border: 1px solid var(--verde); color: var(--verde); border-radius: 50rem; }
+.st-key-btn_cerrar_grupo button:hover { background: var(--verde); color: #fff; border-color: var(--verde); }
 
 /* Fixed bottom bar: Regresar / Inicio */
 .st-key-barra_nav {

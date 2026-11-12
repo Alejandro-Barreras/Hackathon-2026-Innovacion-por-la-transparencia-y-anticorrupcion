@@ -12,11 +12,14 @@ py -m venv .venv
 pip install -r requirements.txt
 ```
 ---
+## Activacion de apis
+python -m uvicorn api:app --reload
+---
 ## Correr
 ```bash
 streamlit run app.py
 ```
----
+
 ## Integrantes del equipo:
 
 - Alejandro Barreras Gutiérrez

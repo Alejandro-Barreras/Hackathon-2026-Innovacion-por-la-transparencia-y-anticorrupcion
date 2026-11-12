@@ -24,6 +24,9 @@ Documentacion interactiva (para probar todo desde el navegador):
     http://127.0.0.1:8000/docs
 """
 
+import csv
+import io
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -51,40 +54,69 @@ def _col(df: pd.DataFrame, prefijo: str):
     return next((c for c in df.columns if c.lower().startswith(p)), None)
 
 
+csv.field_size_limit(10_000_000)  # algunos campos (textos de contratos) son muy largos
+
+
+def _unir_montos(fila: list[str]) -> list[str]:
+    """Si un monto viene sin comillas, '$11,448.85' llega partido en '$11' y '448.85': los vuelve a unir."""
+    unida: list[str] = []
+    for campo in fila:
+        if unida and unida[-1].strip().startswith("$") and re.fullmatch(r"\d{3}(\.\d*)?", campo.strip()):
+            unida[-1] += "," + campo.strip()
+        else:
+            unida.append(campo)
+    return unida
+
+
 def _leer_csv(ruta: Path) -> tuple[pd.DataFrame, int]:
-    """Lee el CSV. Las filas con mas campos que el encabezado (comas sin comillas) se omiten."""
-    omitidas: list[int] = []
-
-    def _fila_mala(fila):
-        omitidas.append(len(fila))
-        return None  # None = omitir la fila
-
-    for enc in ("utf-8-sig", "latin-1"):
+    """
+    Lee el CSV tal como lo publica el portal:
+      - montos sin comillas ("$11,448.85") se vuelven a unir;
+      - comas sobrantes al final de la fila se recortan;
+      - filas con campos de mas QUE SI TIENEN CONTENIDO (comas sin comillas dentro de un texto)
+        se omiten, porque no se pueden alinear con seguridad.
+    Devuelve (DataFrame de texto, numero de filas omitidas).
+    """
+    crudo = ruta.read_bytes()
+    for enc in ("utf-8-sig", "cp1252", "latin-1"):
         try:
-            omitidas.clear()
-            df = pd.read_csv(ruta, encoding=enc, skipinitialspace=True, dtype=str,
-                             engine="python", on_bad_lines=_fila_mala)
-            if df.shape[1] == 1:  # separador distinto de coma: que pandas lo detecte
-                omitidas.clear()
-                df = pd.read_csv(ruta, encoding=enc, sep=None, engine="python",
-                                 skipinitialspace=True, dtype=str, on_bad_lines=_fila_mala)
+            texto = crudo.decode(enc)
             break
         except UnicodeDecodeError:
             continue
-    else:
-        raise HTTPException(500, f"No se pudo leer {ruta.name}")
 
-    if omitidas:
-        print(f"[api] {ruta.name}: se omitieron {len(omitidas)} filas mal formadas")
+    primera = texto.split("\n", 1)[0]
+    sep = max((",", ";", "\t"), key=primera.count)
+    filas = csv.reader(io.StringIO(texto, newline=""), delimiter=sep, skipinitialspace=True)
+    encabezado = next(filas, None)
+    if not encabezado:
+        raise HTTPException(500, f"{ruta.name} esta vacio")
 
-    # Limpieza general: espacios en nombres de columna y en los valores
+    n = len(encabezado)
     nombres, vistos = [], {}
-    for c in df.columns:
-        c = " ".join(str(c).split())
+    for i, c in enumerate(encabezado):
+        c = " ".join(str(c).split()) or f"col_{i}"
         vistos[c] = vistos.get(c, 0) + 1
         nombres.append(c if vistos[c] == 1 else f"{c}.{vistos[c] - 1}")  # evita columnas repetidas
-    df.columns = nombres
-    return df.apply(lambda col: col.str.strip()), len(omitidas)
+
+    datos, omitidas = [], 0
+    for fila in filas:
+        if not any(c.strip() for c in fila):
+            continue
+        fila = _unir_montos(fila)
+        if len(fila) > n:
+            if any(c.strip() for c in fila[n:]):
+                omitidas += 1
+                continue
+            fila = fila[:n]
+        datos.append(fila + [""] * (n - len(fila)))
+
+    if omitidas:
+        print(f"[api] {ruta.name}: se omitieron {omitidas} filas mal formadas")
+
+    df = pd.DataFrame(datos, columns=nombres, dtype=str)
+    df = df.apply(lambda col: col.str.strip()).replace("", pd.NA)
+    return df, omitidas
 
 
 def _fecha_iso(serie: pd.Series) -> pd.Series:
@@ -112,24 +144,29 @@ def _seleccionar(df: pd.DataFrame, mapa: dict, dinero: tuple = ()) -> pd.DataFra
     return salida
 
 
+# Sueldos (LGT Art. 70 fr. VIII): las columnas se toman por POSICION porque los encabezados
+# oficiales son muy largos y cambian de redaccion entre anios.
+POSICIONES_SUELDOS = {
+    0: "ejercicio", 1: "fecha_inicio", 2: "fecha_fin", 3: "tipo_integrante", 4: "nivel",
+    5: "puesto", 6: "cargo", 7: "area", 8: "nombre", 9: "apellido1", 10: "apellido2",
+    11: "sexo", 12: "sueldo_bruto", 14: "sueldo_neto", 29: "dependencia", 30: "fecha_actualizacion",
+}
+
+
 def limpiar_sueldos(df: pd.DataFrame) -> pd.DataFrame:
-    salida = _seleccionar(df, {
-        "Ejercicio": "ejercicio",
-        "Fecha de inicio": "fecha_inicio",
-        "Fecha de término": "fecha_fin",
-        "Tipo de integrante": "tipo_integrante",
-        "Clave o nivel": "nivel",
-        "Denominación o descripción del puesto": "puesto",
-        "Denominación del cargo": "cargo",
-        "Área de adscripción": "area",
-        "Nombre": "nombre",
-        "Primer apellido": "apellido1",
-        "Segundo apellido": "apellido2",
-        "Sexo": "sexo",
-        "Monto de la remuneración bruta": "sueldo_bruto",
-        "Monto de la remuneración neta": "sueldo_neto",
-        "Fecha de Actualización": "fecha_actualizacion",
-    }, dinero=("sueldo_bruto", "sueldo_neto"))
+    salida = pd.DataFrame(index=df.index)
+    for pos, nuevo in POSICIONES_SUELDOS.items():
+        if pos < df.shape[1]:
+            salida[nuevo] = df.iloc[:, pos]
+
+    for c in salida.columns:
+        if c.startswith("fecha"):
+            salida[c] = _fecha_iso(salida[c])
+    for c in ("sueldo_bruto", "sueldo_neto"):
+        if c in salida:
+            salida[c] = _dinero(salida[c])
+    if "dependencia" in salida:  # "10-Tesoreria" -> "Tesoreria"
+        salida["dependencia"] = salida["dependencia"].str.replace(r"^\d+\s*-\s*", "", regex=True)
 
     partes = [c for c in ("nombre", "apellido1", "apellido2") if c in salida]
     if partes:
@@ -182,11 +219,9 @@ def limpiar_padron(df: pd.DataFrame) -> pd.DataFrame:
         "Fecha de actualización": "fecha_actualizacion",
         "Nota": "nota",
     })
-    # Muchos renglones solo dicen "no se generó información": se marcan para poder filtrarlos
-    if "nota" in salida:
-        salida["sin_informacion"] = (
-            salida["nota"].fillna("").str.upper().str.contains("NO SE GENER", regex=False)
-        )
+    # Renglones sin nombre de programa = el area no reporto apoyos en ese periodo
+    if "programa" in salida:
+        salida["sin_informacion"] = salida["programa"].isna()
     return salida
 
 
@@ -214,7 +249,7 @@ LIMPIADORES = {
 # Valores por defecto para /resumen y /estadisticas cuando no se indican.
 # Sin "valor" el resumen cuenta filas; con "valor" suma esa columna.
 DEFAULTS = {
-    "sueldos": {"agrupar_por": "area", "valor": "sueldo_bruto"},
+    "sueldos": {"agrupar_por": "dependencia", "valor": "sueldo_bruto"},
     "adjudicaciones": {"agrupar_por": "area_contratante", "valor": "monto_total"},
     "padron_beneficiarios": {"agrupar_por": "area"},
     "normativo": {"agrupar_por": "tipo_normatividad"},
@@ -252,7 +287,7 @@ def _exigir_columna(df: pd.DataFrame, columna: str) -> None:
 
 def filtrar(df, buscar, filtro_columna, filtro_valor):
     if buscar:
-        mask = df.astype(str).apply(
+        mask = df.astype("string").apply(
             lambda c: c.str.contains(buscar, case=False, na=False, regex=False)
         ).any(axis=1)
         df = df[mask]
@@ -260,7 +295,7 @@ def filtrar(df, buscar, filtro_columna, filtro_valor):
         if not (filtro_columna and filtro_valor):
             raise HTTPException(400, "Usa filtro_columna y filtro_valor juntos.")
         _exigir_columna(df, filtro_columna)
-        df = df[df[filtro_columna].astype(str).str.contains(
+        df = df[df[filtro_columna].astype("string").str.contains(
             filtro_valor, case=False, na=False, regex=False)]
     return df
 
@@ -301,22 +336,28 @@ def columnas(dataset: str):
 @app.get("/api/{dataset}/datos")
 def datos(
     dataset: str,
-    limite: int = Query(50, ge=1, le=1000),
+    limite: int = Query(50, ge=1, le=200_000),
     pagina: int = Query(1, ge=1),
     buscar: str | None = Query(None, description="Texto a buscar en cualquier columna"),
     filtro_columna: str | None = None,
     filtro_valor: str | None = None,
     ordenar_por: str | None = None,
     desc: bool = True,
+    columnas: str | None = Query(None, description="Columnas a devolver, separadas por coma (por defecto todas)"),
 ):
-    """Filas del dataset con paginacion, busqueda, filtro y orden."""
+    """Filas del dataset con paginacion, busqueda, filtro, orden y seleccion de columnas."""
     df = filtrar(cargar(dataset), buscar, filtro_columna, filtro_valor)
     if ordenar_por:
         _exigir_columna(df, ordenar_por)
         df = df.sort_values(ordenar_por, ascending=not desc, na_position="last")
     ini = (pagina - 1) * limite
-    return {"total": len(df), "pagina": pagina, "limite": limite,
-            "filas": _a_json(df.iloc[ini:ini + limite])}
+    pagina_df = df.iloc[ini:ini + limite]
+    if columnas:
+        cols = [c.strip() for c in columnas.split(",") if c.strip()]
+        for c in cols:
+            _exigir_columna(df, c)
+        pagina_df = pagina_df[cols]
+    return {"total": len(df), "pagina": pagina, "limite": limite, "filas": _a_json(pagina_df)}
 
 
 @app.get("/api/{dataset}/valores/{columna}")

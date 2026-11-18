@@ -16,17 +16,12 @@ def mostrar() -> None:
             api.aviso_error(e)
         return
 
-    df, anio, corte = api.filtrar_anio(df, key="sueldos_anio")
+    df, rango, corte = api.filtrar_tiempo(df, key="sueldos_tiempo")
 
     sueldos = df["bruto"].dropna()
     cifra = ""
     if len(sueldos):
-        if anio and corte:
-            cuando = f"En {anio} (datos al {corte})"
-        elif anio:
-            cuando = f"En {anio}"
-        else:
-            cuando = "En los datos disponibles"
+        cuando = f"En {rango} (datos al {corte})" if rango else "En los datos disponibles"
         cifra = (
             f"{cuando} hay <strong>{len(df):,}</strong> personas con sueldo registrado. "
             f"La mitad gana menos de <strong>{pesos(sueldos.median())}</strong> de sueldo bruto."

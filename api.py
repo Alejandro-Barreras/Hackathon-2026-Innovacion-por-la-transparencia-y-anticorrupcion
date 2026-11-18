@@ -9,10 +9,16 @@ Estructura esperada del proyecto:
         normativo.csv
         padron_beneficiarios.csv
         adjudicaciones.csv
+        pres/
+            pres-2024-TRIMESTRE I.csv ... pres-2026-TRIMESTRE IV.csv
 
 Cada CSV dentro de datos/ se publica automaticamente. El nombre del archivo
 (sin .csv) es el nombre del dataset en la URL:  datos/sueldos.csv -> /api/sueldos/...
 Si agregas un CSV nuevo no hay que tocar nada: solo guardarlo en datos/.
+
+Excepcion: los CSV trimestrales de datos/pres/ se juntan en UN solo dataset,
+"presupuesto" (/api/presupuesto/...). Para graficas hay ademas
+/api/presupuesto/consolidado, que ya viene sumado por clasificacion y trimestre.
 
 Instalacion:
     pip install fastapi uvicorn pandas
@@ -238,6 +244,64 @@ def limpiar_normativo(df: pd.DataFrame) -> pd.DataFrame:
     })
 
 
+# Presupuesto (formato CONAC): un CSV por trimestre en datos/pres/, p. ej. "pres-2024-TRIMESTRE I.csv".
+# Se conservan los nombres originales de columna (los usa graficas_presupuestos.py).
+DIR_PRES = DIR / "pres"
+DATASET_PRES = "presupuesto"
+MONTOS_PRES = ["aprobado_", "modificado_", "comprometido_", "devengado_", "pagado_"]
+DIMENSIONES_PRES = [
+    "CLADM_DEPENDENCIA_DESC", "CLADM_UNIDAD_ADMINISTRATIVA_DESC",
+    "CLOBJ_capitulo_DESC", "CLOBJ_concepto_DESC", "CLOBJ_partida_generica_DESC",
+    "CLFUN_gpo_funcional_DESC", "CLFUN_funcion_DESC", "CLTIG_tipo_de_gasto_DESC",
+]
+CLAVES_PERIODO_PRES = ["ejercicio", "trimestre", "periodo", "fecha_inicio", "fecha_fin"]
+ROMANOS = {"I": 1, "II": 2, "III": 3, "IV": 4}
+# Primer y ultimo dia de cada trimestre (mes, dia)
+LIMITES_TRIMESTRE = {1: ((1, 1), (3, 31)), 2: ((4, 1), (6, 30)), 3: ((7, 1), (9, 30)), 4: ((10, 1), (12, 31))}
+
+
+def _archivos_presupuesto() -> list[Path]:
+    return sorted(DIR_PRES.glob("pres-*.csv")) if DIR_PRES.is_dir() else []
+
+
+def _ejercicio_trimestre(ruta: Path) -> tuple[int, int]:
+    """'pres-2024-TRIMESTRE III.csv' -> (2024, 3)."""
+    m = re.search(r"pres-(\d{4})-TRIMESTRE\s+(IV|III|II|I)\b", ruta.stem, flags=re.IGNORECASE)
+    if not m:
+        raise HTTPException(500, f"No se pudo leer el ejercicio y trimestre de '{ruta.name}'")
+    return int(m.group(1)), ROMANOS[m.group(2).upper()]
+
+
+def cargar_presupuesto() -> pd.DataFrame:
+    """Junta los CSV trimestrales en un solo DataFrame.
+
+    Agrega ejercicio, trimestre, fecha_inicio y fecha_fin (ISO) a partir del nombre del archivo,
+    y deja los montos como numero. No se conserva num_fila ni las claves (_ID): basta con las descripciones.
+    """
+    partes = []
+    for ruta in _archivos_presupuesto():
+        df, omitidas = _leer_csv(ruta)
+        _omitidas[DATASET_PRES] = _omitidas.get(DATASET_PRES, 0) + omitidas
+        ejercicio, trimestre = _ejercicio_trimestre(ruta)
+        (mes_ini, dia_ini), (mes_fin, dia_fin) = LIMITES_TRIMESTRE[trimestre]
+
+        salida = pd.DataFrame(index=df.index)
+        for col in DIMENSIONES_PRES:
+            salida[col] = df[col] if col in df.columns else pd.NA
+        for col in MONTOS_PRES:
+            salida[col] = _dinero(df[col]) if col in df.columns else 0.0
+        salida.insert(0, "ejercicio", ejercicio)
+        salida.insert(1, "trimestre", trimestre)
+        salida.insert(2, "periodo", f"TRIMESTRE {next(k for k, v in ROMANOS.items() if v == trimestre)}")
+        salida.insert(3, "fecha_inicio", f"{ejercicio}-{mes_ini:02d}-{dia_ini:02d}")
+        salida.insert(4, "fecha_fin", f"{ejercicio}-{mes_fin:02d}-{dia_fin:02d}")
+        partes.append(salida)
+
+    if not partes:
+        raise HTTPException(404, f"No hay archivos pres-*.csv en {DIR_PRES}")
+    return pd.concat(partes, ignore_index=True)
+
+
 # Limpieza especifica por dataset (el nombre es el del archivo CSV sin extension).
 LIMPIADORES = {
     "sueldos": limpiar_sueldos,
@@ -253,6 +317,7 @@ DEFAULTS = {
     "adjudicaciones": {"agrupar_por": "area_contratante", "valor": "monto_total"},
     "padron_beneficiarios": {"agrupar_por": "area"},
     "normativo": {"agrupar_por": "tipo_normatividad"},
+    "presupuesto": {"agrupar_por": "CLADM_DEPENDENCIA_DESC", "valor": "devengado_"},
 }
 
 
@@ -264,12 +329,23 @@ _omitidas: dict[str, int] = {}  # filas descartadas por dataset (CSV mal formado
 
 
 def disponibles() -> list[str]:
-    return sorted(p.stem for p in DIR.glob("*.csv"))
+    nombres = {p.stem for p in DIR.glob("*.csv")}
+    if _archivos_presupuesto():
+        nombres.add(DATASET_PRES)  # los CSV de datos/pres/ forman un solo dataset
+    return sorted(nombres)
 
 
 def cargar(nombre: str) -> pd.DataFrame:
     if nombre not in disponibles():
         raise HTTPException(404, f"Dataset '{nombre}' no existe. Disponibles: {disponibles()}")
+    if nombre == DATASET_PRES and not (DIR / f"{nombre}.csv").exists():
+        archivos = _archivos_presupuesto()
+        # Se recarga si cambia, se agrega o se quita algun archivo de datos/pres/
+        mtime = sum(p.stat().st_mtime for p in archivos) + len(archivos)
+        if nombre not in _cache or _cache[nombre][0] != mtime:
+            _omitidas[nombre] = 0
+            _cache[nombre] = (mtime, cargar_presupuesto())
+        return _cache[nombre][1]
     ruta = DIR / f"{nombre}.csv"
     mtime = ruta.stat().st_mtime
     if nombre not in _cache or _cache[nombre][0] != mtime:
@@ -325,6 +401,21 @@ def datasets():
         except Exception as e:  # noqa: BLE001
             salida.append({"nombre": n, "error": str(getattr(e, "detail", e))})
     return salida
+
+
+@app.get("/api/presupuesto/consolidado")
+def presupuesto_consolidado():
+    """Presupuesto sumado por trimestre y clasificacion (dependencia, capitulo, funcion, etc.).
+
+    Junta las filas de partida de los 12 CSV en pocas filas por trimestre, para que la
+    pagina descargue poco. Los montos son la suma de aprobado, modificado, comprometido,
+    devengado y pagado tal como vienen en cada trimestre.
+    """
+    df = cargar(DATASET_PRES)
+    claves = CLAVES_PERIODO_PRES + DIMENSIONES_PRES
+    tabla = df.groupby(claves, dropna=False, as_index=False)[MONTOS_PRES].sum()
+    tabla[MONTOS_PRES] = tabla[MONTOS_PRES].round(2)
+    return {"total": len(tabla), "filas": _a_json(tabla)}
 
 
 @app.get("/api/{dataset}/columnas")

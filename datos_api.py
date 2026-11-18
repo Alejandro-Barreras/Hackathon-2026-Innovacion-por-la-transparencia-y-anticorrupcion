@@ -123,6 +123,40 @@ def sueldos() -> pd.DataFrame:
     return con_periodo(df)
 
 
+# --- Presupuesto: deja los datos de la API en el formato que esperan las gráficas de graficas_presupuestos ---
+MONTOS_PRESUPUESTO = ["aprobado_", "modificado_", "comprometido_", "devengado_", "pagado_"]
+DIMENSIONES_PRESUPUESTO = [
+    "CLADM_DEPENDENCIA_DESC", "CLADM_UNIDAD_ADMINISTRATIVA_DESC",
+    "CLOBJ_capitulo_DESC", "CLOBJ_concepto_DESC", "CLOBJ_partida_generica_DESC",
+    "CLFUN_gpo_funcional_DESC", "CLFUN_funcion_DESC", "CLTIG_tipo_de_gasto_DESC",
+]
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def presupuesto() -> pd.DataFrame:
+    """Columnas: ejercicio, trimestre, periodo, fecha_inicio, fecha_fin, las dimensiones (dependencia,
+    capítulo, función…) y los montos (aprobado_, modificado_, comprometido_, devengado_, pagado_).
+
+    Viene ya sumado por clasificación y trimestre (/api/presupuesto/consolidado), así que es ligero.
+    Los trimestres sin ningún monto (p. ej. un trimestre que aún no se reporta) se descartan.
+    """
+    filas = get("/api/presupuesto/consolidado")["filas"]
+    if not filas:
+        raise ApiError("La API no devolvió registros de presupuesto.")
+    df = pd.DataFrame(filas)
+
+    for col in MONTOS_PRESUPUESTO:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    for col in DIMENSIONES_PRESUPUESTO:
+        df[col] = df[col].fillna("Sin clasificar")
+
+    con_movimiento = df.groupby("fecha_fin")[MONTOS_PRESUPUESTO].transform("sum").sum(axis=1) != 0
+    df = df[con_movimiento].reset_index(drop=True)
+    if df.empty:
+        raise ApiError("Los archivos de presupuesto no tienen montos.")
+    return df
+
+
 # --- Interfaz común ---
 def encabezado(titulo: str, entrada: str, cifra: str = "") -> None:
     """Título de la página, una línea de introducción y (opcional) la cifra principal."""

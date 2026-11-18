@@ -72,6 +72,22 @@ def filtrar_periodo(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, str | Non
     return df[df["periodo"] == periodo], periodo
 
 
+def filtrar_anio(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, str | None, str | None]:
+    """Selector de año (el más reciente por defecto). Usa el último trimestre reportado de ese año
+    para no contar varias veces al mismo personal. Devuelve (datos, año, fecha de corte)."""
+    ejercicio = df["ejercicio"].astype("string").str.strip()
+    anios = sorted(ejercicio.dropna().unique(), reverse=True)
+    if not anios:
+        return df, None, None
+    anio = st.selectbox("Año", anios, key=key)
+    del_anio = df[ejercicio == anio]
+    fin = pd.to_datetime(del_anio["fecha_fin"], errors="coerce")
+    corte = fin.max()
+    if pd.isna(corte):
+        return del_anio, anio, None
+    return del_anio[fin == corte], anio, corte.strftime("%d/%m/%Y")
+
+
 # --- Sueldos: deja los datos de la API en el formato que esperan las gráficas de graficas_remuneraciones ---
 @st.cache_data(ttl=300, show_spinner=False)
 def sueldos() -> pd.DataFrame:

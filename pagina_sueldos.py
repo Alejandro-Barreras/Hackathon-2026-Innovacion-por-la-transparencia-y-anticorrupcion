@@ -16,12 +16,12 @@ def mostrar() -> None:
             api.aviso_error(e)
         return
 
-    df, periodo = api.filtrar_periodo(df, key="sueldos_periodo")
+    df, rango, corte = api.filtrar_tiempo(df, key="sueldos_tiempo")
 
     sueldos = df["bruto"].dropna()
     cifra = ""
     if len(sueldos):
-        cuando = f"En el periodo {periodo}" if periodo else "En los datos disponibles"
+        cuando = f"En {rango} (datos al {corte})" if rango else "En los datos disponibles"
         cifra = (
             f"{cuando} hay <strong>{len(df):,}</strong> personas con sueldo registrado. "
             f"La mitad gana menos de <strong>{pesos(sueldos.median())}</strong> de sueldo bruto."

@@ -72,6 +72,32 @@ def filtrar_periodo(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, str | Non
     return df[df["periodo"] == periodo], periodo
 
 
+TRIMESTRES = {1: "Ene–Mar", 2: "Abr–Jun", 3: "Jul–Sep", 4: "Oct–Dic"}
+SEMESTRES = {1: "Ene–Jun", 2: "Jul–Dic"}
+
+
+def filtrar_tiempo(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, str | None, str | None]:
+    """Selector de trimestre, semestre o año (el más reciente por defecto). Dentro del rango elegido
+    usa el último reporte, para no contar varias veces al mismo personal.
+    Devuelve (datos, etiqueta del rango, fecha de corte)."""
+    fin = pd.to_datetime(df["fecha_fin"], errors="coerce")
+    if fin.isna().all():
+        return df, None, None
+    escala = st.radio("Ver por", ["Trimestre", "Semestre", "Año"], index=2, horizontal=True, key=f"{key}_escala")
+    anio = fin.dt.year.astype("Int64").astype("string")
+    if escala == "Trimestre":
+        grupo = fin.dt.quarter.map(TRIMESTRES) + " " + anio
+    elif escala == "Semestre":
+        grupo = ((fin.dt.month > 6) + 1).map(SEMESTRES) + " " + anio
+    else:
+        grupo = anio
+    opciones = grupo[fin.notna()].iloc[fin[fin.notna()].argsort()[::-1]].unique().tolist()
+    elegido = st.selectbox(escala, opciones, key=f"{key}_{escala}")
+    en_grupo = grupo == elegido
+    corte = fin[en_grupo].max()
+    return df[en_grupo & (fin == corte)], elegido, corte.strftime("%d/%m/%Y")
+
+
 # --- Sueldos: deja los datos de la API en el formato que esperan las gráficas de graficas_remuneraciones ---
 @st.cache_data(ttl=300, show_spinner=False)
 def sueldos() -> pd.DataFrame:

@@ -54,10 +54,9 @@ def estilo_grafica(fig: go.Figure, alto: int) -> go.Figure:
     return fig
 
 
-def gasto_por_dependencia(vigente: pd.DataFrame) -> pd.DataFrame:
-    """Gastado por dependencia, de mayor a menor (solo las que han gastado algo)."""
-    tabla = vigente.groupby(DEPENDENCIA)[GASTADO].sum().sort_values(ascending=False)
-    return tabla[tabla > 0].rename("Gastado").rename_axis("Dependencia").reset_index()
+def gasto_por_dependencia(filas: pd.DataFrame, previas: pd.DataFrame) -> pd.Series:
+    """Gastado por dependencia: lo de `filas` menos lo de `previas` (el acumulado antes del periodo)."""
+    return filas.groupby(DEPENDENCIA)[GASTADO].sum().sub(previas.groupby(DEPENDENCIA)[GASTADO].sum(), fill_value=0)
 
 
 def mostrar() -> None:
@@ -67,33 +66,54 @@ def mostrar() -> None:
         api.aviso_error(e)
         return
 
-    ejercicios = sorted(completo["ejercicio"].unique(), reverse=True)
-    ejercicio = st.selectbox("Ejercicio", ejercicios, key="presupuesto_ejercicio")
-
+    # Trimestre, semestre o año (el mismo selector que en sueldos); `fin` = el último reporte del rango.
+    fin, rango, _ = api.filtrar_tiempo(completo, key="presupuesto_tiempo")
+    escala = st.session_state["presupuesto_tiempo_escala"]
+    ejercicio = fin["ejercicio"].iloc[0]
+    ultimo = int(fin["trimestre"].max())  # último trimestre con datos del rango
+    corte = fecha_larga(fin["fecha_fin"].iloc[0])
     anio = completo[completo["ejercicio"] == ejercicio]
-    ultimo = int(anio["trimestre"].max())  # último trimestre con datos
-    fecha_corte = anio.loc[anio["trimestre"] == ultimo, "fecha_fin"].iloc[0]
-    corte = fecha_larga(fecha_corte)
-    vigente = anio[anio["trimestre"] == ultimo] if ACUMULADO else anio
 
-    # --- Cifras del año ---
-    aprobado = vigente["aprobado_"].sum()
-    ejercido = vigente[GASTADO].sum()
+    # Primer trimestre del periodo y cuántos trimestres abarca.
+    primer, trimestres_periodo = {"Trimestre": (ultimo, 1), "Semestre": (1 if ultimo <= 2 else 3, 2), "Año": (1, 4)}[escala]
+
+    # --- Cifras del periodo ---
+    if ACUMULADO:
+        # Lo del periodo = acumulado al cierre menos acumulado al cierre del trimestre anterior al periodo.
+        gasto_dep = gasto_por_dependencia(fin, anio[anio["trimestre"] == primer - 1])
+        aprobado = fin["aprobado_"].sum()
+    else:
+        gasto_dep = gasto_por_dependencia(anio[anio["trimestre"].between(primer, ultimo)], anio.iloc[0:0])
+        aprobado = anio["aprobado_"].sum()
+    ejercido = gasto_dep.sum()
     if aprobado <= 0:
         api.aviso(f"<strong>Sin presupuesto aprobado.</strong> Los reportes de {ejercicio} no traen monto aprobado.")
         return
-    previsto = aprobado * ultimo / 4  # lo que se llevaría gastado si el gasto fuera parejo
-    p_ejercido = pct(ejercido, aprobado)
-    p_meta = pct(previsto, aprobado)
+    base = aprobado * trimestres_periodo / 4  # la parte del presupuesto anual que le toca al periodo
+    previsto = aprobado * (ultimo - primer + 1) / 4  # lo que se llevaría gastado si el gasto fuera parejo
+    p_ejercido = pct(ejercido, base)
+    p_meta = pct(previsto, base)
     ancho_ejercido = min(p_ejercido, 100)
+
+    if escala == "Año":
+        cifra = (
+            f"Al {corte}, el Ayuntamiento ha gastado <strong>{millones(ejercido)}</strong> de los "
+            f"<strong>{millones(aprobado)}</strong> aprobados para {ejercicio}. "
+            f"Es el {p_ejercido:.0f}&nbsp;% del presupuesto anual."
+        )
+    else:
+        cifra = (
+            f"En {rango} (datos al {corte}), el Ayuntamiento gastó <strong>{millones(ejercido)}</strong> de los "
+            f"<strong>{millones(base)}</strong> que le tocan al periodo (la parte proporcional de los "
+            f"{millones(aprobado)} aprobados para {ejercicio}). Es el {p_ejercido:.0f}&nbsp;%."
+        )
 
     st.markdown(
         f"""
 <section class="resumen" id="contenido" aria-labelledby="titulo">
   <h1 id="titulo">¿En qué se gasta el dinero público de Hermosillo?</h1>
   <p class="entrada">Consulta cuánto dinero aprobó el Ayuntamiento para este año, cuánto ha gastado y en qué.</p>
-  <p class="cifra">Al {corte}, el Ayuntamiento ha gastado <strong>{millones(ejercido)}</strong>
-  de los <strong>{millones(aprobado)}</strong> aprobados para {ejercicio}. Es el {p_ejercido:.0f}&nbsp;% del presupuesto anual.</p>
+  <p class="cifra">{cifra}</p>
   <div class="barra" role="img"
        aria-label="Gastado: {p_ejercido:.0f} % del presupuesto. Lo previsto a esta fecha era {p_meta:.0f} %.">
     <div class="ejercido" style="width:{ancho_ejercido:.1f}%"></div>
@@ -102,7 +122,7 @@ def mostrar() -> None:
   <ul class="barra-leyenda">
     <li><span class="muestra ejercido" aria-hidden="true"></span>Gastado: {millones(ejercido)} ({p_ejercido:.0f}&nbsp;%)</li>
     <li><span class="muestra meta" aria-hidden="true"></span>Previsto a esta fecha: {millones(previsto)} ({p_meta:.0f}&nbsp;%)</li>
-    <li><span class="muestra pendiente" aria-hidden="true"></span>Por gastar: {millones(max(aprobado - ejercido, 0))}</li>
+    <li><span class="muestra pendiente" aria-hidden="true"></span>Por gastar: {millones(max(base - ejercido, 0))}</li>
   </ul>
 </section>
 """,
@@ -113,10 +133,11 @@ def mostrar() -> None:
     api.seccion(
         "por-dependencia",
         "¿Qué áreas del Ayuntamiento gastan más?",
-        "Dinero gastado por cada área en lo que va del año, de mayor a menor.",
+        f"Dinero gastado por cada área en {rango}, de mayor a menor.",
     )
 
-    todas = gasto_por_dependencia(vigente)
+    todas = gasto_dep[gasto_dep > 0].sort_values(ascending=False)
+    todas = todas.rename("Gastado").rename_axis("Dependencia").reset_index()
     if todas.empty:
         api.aviso("Todavía no hay gasto registrado en este periodo.")
     else:

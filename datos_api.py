@@ -72,6 +72,32 @@ def filtrar_periodo(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, str | Non
     return df[df["periodo"] == periodo], periodo
 
 
+TRIMESTRES = {1: "Ene–Mar", 2: "Abr–Jun", 3: "Jul–Sep", 4: "Oct–Dic"}
+SEMESTRES = {1: "Ene–Jun", 2: "Jul–Dic"}
+
+
+def filtrar_tiempo(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, str | None, str | None]:
+    """Selector de trimestre, semestre o año (el más reciente por defecto). Dentro del rango elegido
+    usa el último reporte, para no contar varias veces al mismo personal.
+    Devuelve (datos, etiqueta del rango, fecha de corte)."""
+    fin = pd.to_datetime(df["fecha_fin"], errors="coerce")
+    if fin.isna().all():
+        return df, None, None
+    escala = st.radio("Ver por", ["Trimestre", "Semestre", "Año"], index=2, horizontal=True, key=f"{key}_escala")
+    anio = fin.dt.year.astype("Int64").astype("string")
+    if escala == "Trimestre":
+        grupo = fin.dt.quarter.map(TRIMESTRES) + " " + anio
+    elif escala == "Semestre":
+        grupo = ((fin.dt.month > 6) + 1).map(SEMESTRES) + " " + anio
+    else:
+        grupo = anio
+    opciones = grupo[fin.notna()].iloc[fin[fin.notna()].argsort()[::-1]].unique().tolist()
+    elegido = st.selectbox(escala, opciones, key=f"{key}_{escala}")
+    en_grupo = grupo == elegido
+    corte = fin[en_grupo].max()
+    return df[en_grupo & (fin == corte)], elegido, corte.strftime("%d/%m/%Y")
+
+
 # --- Sueldos: deja los datos de la API en el formato que esperan las gráficas de graficas_remuneraciones ---
 @st.cache_data(ttl=300, show_spinner=False)
 def sueldos() -> pd.DataFrame:
@@ -95,6 +121,40 @@ def sueldos() -> pd.DataFrame:
         df[col] = df[col].str.upper()  # "Director" y "DIRECTOR" cuentan como lo mismo
     df["sexo"] = df["sexo"].str.capitalize().fillna("Sin dato")
     return con_periodo(df)
+
+
+# --- Presupuesto: deja los datos de la API en el formato que esperan las gráficas de graficas_presupuestos ---
+MONTOS_PRESUPUESTO = ["aprobado_", "modificado_", "comprometido_", "devengado_", "pagado_"]
+DIMENSIONES_PRESUPUESTO = [
+    "CLADM_DEPENDENCIA_DESC", "CLADM_UNIDAD_ADMINISTRATIVA_DESC",
+    "CLOBJ_capitulo_DESC", "CLOBJ_concepto_DESC", "CLOBJ_partida_generica_DESC",
+    "CLFUN_gpo_funcional_DESC", "CLFUN_funcion_DESC", "CLTIG_tipo_de_gasto_DESC",
+]
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def presupuesto() -> pd.DataFrame:
+    """Columnas: ejercicio, trimestre, periodo, fecha_inicio, fecha_fin, las dimensiones (dependencia,
+    capítulo, función…) y los montos (aprobado_, modificado_, comprometido_, devengado_, pagado_).
+
+    Viene ya sumado por clasificación y trimestre (/api/presupuesto/consolidado), así que es ligero.
+    Los trimestres sin ningún monto (p. ej. un trimestre que aún no se reporta) se descartan.
+    """
+    filas = get("/api/presupuesto/consolidado")["filas"]
+    if not filas:
+        raise ApiError("La API no devolvió registros de presupuesto.")
+    df = pd.DataFrame(filas)
+
+    for col in MONTOS_PRESUPUESTO:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    for col in DIMENSIONES_PRESUPUESTO:
+        df[col] = df[col].fillna("Sin clasificar")
+
+    con_movimiento = df.groupby("fecha_fin")[MONTOS_PRESUPUESTO].transform("sum").sum(axis=1) != 0
+    df = df[con_movimiento].reset_index(drop=True)
+    if df.empty:
+        raise ApiError("Los archivos de presupuesto no tienen montos.")
+    return df
 
 
 # --- Interfaz común ---

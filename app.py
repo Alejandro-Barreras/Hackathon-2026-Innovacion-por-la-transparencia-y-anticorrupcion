@@ -187,7 +187,7 @@ def tarjeta(p: dict) -> None:
             f"""
 <div class="tarjeta-banda"><div class="tarjeta-icono"><i class="mdi {p['icono']}" aria-hidden="true"></i></div></div>
 <h3 class="tarjeta-titulo">{p['nombre']}</h3>
-<p class="tarjeta-descripcion">{p['descripcion']}</p>
+<details class="tarjeta-descripcion"><summary>{p['descripcion']}</summary></details>
 """,
             unsafe_allow_html=True,
         )
